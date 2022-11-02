@@ -3,6 +3,8 @@
 
 use s2n_quic::Server;
 use std::error::Error;
+use s2n_quic::provider::tls::s2n_tls::{ClientHelloCallback, Connection};
+use core::task::Poll;
 
 /// NOTE: this certificate is to be used for demonstration purposes only!
 pub static CERT_PEM: &str = include_str!(concat!(
@@ -15,10 +17,33 @@ pub static KEY_PEM: &str = include_str!(concat!(
     "/../../quic/s2n-quic-core/certs/key.pem"
 ));
 
+pub struct MyClientHelloHandler{}
+
+impl ClientHelloCallback for MyClientHelloHandler {
+    fn poll_client_hello(&self, conn: &mut Connection) -> core::task::Poll<Result<(),s2n_tls::error::Error>> {
+        let mut config = s2n_tls::config::Builder::new();
+
+        config.load_pem(CERT_PEM.as_bytes(), KEY_PEM.as_bytes()).unwrap();
+        let config = config.build().unwrap();
+
+        conn.set_config(config).unwrap();
+        println!("Set config done");
+        conn.server_name_extension_used(); // If I use sni to config the connection, I need to call this.
+        Poll::Ready(Ok(()))
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    let tls = s2n_quic::provider::tls::s2n_tls::Server::builder()
+        //.with_certificate(CERT_PEM, KEY_PEM)?
+        //.with_io("127.0.0.1:4433")?
+        .with_client_hello_handler(MyClientHelloHandler{})?
+        .build()?;
+
     let mut server = Server::builder()
-        .with_tls((CERT_PEM, KEY_PEM))?
+        // .with_tls((CERT_PEM, KEY_PEM))?    
+        .with_tls(tls)?
         .with_io("127.0.0.1:4433")?
         .start()?;
 
