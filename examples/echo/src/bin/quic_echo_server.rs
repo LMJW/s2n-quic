@@ -28,6 +28,10 @@ impl ClientHelloCallback for MyClientHelloHandler {
         if !invoked {
             let mut config = s2n_tls::config::Builder::new();
 
+            config.enable_quic().unwrap(); 
+            config.set_security_policy(&s2n_tls::security::DEFAULT_TLS13).unwrap(); 
+            config.set_application_protocol_preference([b"h3"]).unwrap(); 
+
             config.load_pem(CERT_PEM.as_bytes(), KEY_PEM.as_bytes()).unwrap();
             let config = config.build().unwrap();
 
