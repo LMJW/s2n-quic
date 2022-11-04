@@ -4,7 +4,8 @@
 use s2n_quic::Server;
 use std::error::Error;
 use s2n_quic::provider::tls::s2n_tls::{ClientHelloCallback, Connection};
-use core::task::Poll;
+use core::{task::Poll, sync::atomic::{AtomicBool, Ordering}};
+use std::sync::Arc;
 
 /// NOTE: this certificate is to be used for demonstration purposes only!
 pub static CERT_PEM: &str = include_str!(concat!(
@@ -17,17 +18,23 @@ pub static KEY_PEM: &str = include_str!(concat!(
     "/../../quic/s2n-quic-core/certs/key.pem"
 ));
 
-pub struct MyClientHelloHandler{}
+pub struct MyClientHelloHandler{
+    invoked: Arc<AtomicBool>,
+}
 
 impl ClientHelloCallback for MyClientHelloHandler {
     fn poll_client_hello(&self, conn: &mut Connection) -> core::task::Poll<Result<(),s2n_tls::error::Error>> {
-        let mut config = s2n_tls::config::Builder::new();
+        let invoked = self.invoked.fetch_or(true, Ordering::SeqCst);
+        if !invoked {
+            let mut config = s2n_tls::config::Builder::new();
 
-        config.load_pem(CERT_PEM.as_bytes(), KEY_PEM.as_bytes()).unwrap();
-        let config = config.build().unwrap();
+            config.load_pem(CERT_PEM.as_bytes(), KEY_PEM.as_bytes()).unwrap();
+            let config = config.build().unwrap();
 
-        conn.set_config(config).unwrap();
-        println!("Set config done");
+            conn.set_config(config).unwrap();
+            println!("Set config done");
+            return Poll::Pending;
+        }
         conn.server_name_extension_used(); // If I use sni to config the connection, I need to call this.
         Poll::Ready(Ok(()))
     }
@@ -38,7 +45,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let tls = s2n_quic::provider::tls::s2n_tls::Server::builder()
         //.with_certificate(CERT_PEM, KEY_PEM)?
         //.with_io("127.0.0.1:4433")?
-        .with_client_hello_handler(MyClientHelloHandler{})?
+        .with_client_hello_handler(MyClientHelloHandler{invoked:Arc::new(AtomicBool::default())})?
         .build()?;
 
     let mut server = Server::builder()
