@@ -3,7 +3,7 @@
 
 use s2n_quic::Server;
 use std::error::Error;
-use s2n_quic::provider::tls::s2n_tls::{ClientHelloCallback, Connection};
+use s2n_quic::provider::tls::s2n_tls::{self as s2n_quic_tls, ClientHelloCallback, Connection, ConfigLoader};
 use core::{task::Poll, sync::atomic::{AtomicBool, Ordering}};
 use std::sync::Arc;
 
@@ -21,6 +21,21 @@ pub static KEY_PEM: &str = include_str!(concat!(
 pub struct MyClientHelloHandler{
     invoked: Arc<AtomicBool>,
 }
+
+pub struct MyLoader{}
+
+impl ConfigLoader for MyLoader {
+    fn load(&mut self, cx: ConnectionContext) -> s2n_tls::config::Config {
+        let mut config = s2n_tls::config::Builder::new();
+
+        config.enable_quic().unwrap(); 
+        config.set_security_policy(&s2n_tls::security::DEFAULT_TLS13).unwrap(); 
+        config.set_application_protocol_preference([b"h3"]).unwrap();
+
+        config.build().unwrap()
+    }
+}
+
 
 impl ClientHelloCallback for MyClientHelloHandler {
     fn poll_client_hello(&self, conn: &mut Connection) -> core::task::Poll<Result<(),s2n_tls::error::Error>> {
@@ -46,11 +61,13 @@ impl ClientHelloCallback for MyClientHelloHandler {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let tls = s2n_quic::provider::tls::s2n_tls::Server::builder()
-        //.with_certificate(CERT_PEM, KEY_PEM)?
-        //.with_io("127.0.0.1:4433")?
-        .with_client_hello_handler(MyClientHelloHandler{invoked:Arc::new(AtomicBool::default())})?
-        .build()?;
+    // let tls = s2n_quic::provider::tls::s2n_tls::Server::builder()
+    //     //.with_certificate(CERT_PEM, KEY_PEM)?
+    //     //.with_io("127.0.0.1:4433")?
+    //     .with_client_hello_handler(MyClientHelloHandler{invoked:Arc::new(AtomicBool::default())})?
+    //     .build()?;
+
+    let tls = s2n_quic::provider::tls::s2n_tls::Server::from_loader(MyLoader{});
 
     let mut server = Server::builder()
         // .with_tls((CERT_PEM, KEY_PEM))?    
