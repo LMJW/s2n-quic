@@ -18,43 +18,24 @@ pub static KEY_PEM: &str = include_str!(concat!(
     "/../../quic/s2n-quic-core/certs/key.pem"
 ));
 
-pub struct MyClientHelloHandler{
-    invoked: Arc<AtomicBool>,
-}
+#[derive(Clone)]
+pub struct MyClientHelloHandler{}
 
-pub struct MyLoader{}
-
-impl ConfigLoader for MyLoader {
-    fn load(&mut self, cx: ConnectionContext) -> s2n_tls::config::Config {
+impl ClientHelloCallback for MyClientHelloHandler {
+    fn poll_client_hello(&self, conn: &mut Connection) -> core::task::Poll<Result<(),s2n_tls::error::Error>> {
         let mut config = s2n_tls::config::Builder::new();
 
         config.enable_quic().unwrap(); 
         config.set_security_policy(&s2n_tls::security::DEFAULT_TLS13).unwrap(); 
-        config.set_application_protocol_preference([b"h3"]).unwrap();
+        config.set_application_protocol_preference([b"h3"]).unwrap(); 
+        config.set_client_hello_callback(self.clone());
+
         config.load_pem(CERT_PEM.as_bytes(), KEY_PEM.as_bytes()).unwrap();
-        println!("config load.");
-        config.build().unwrap()
-    }
-}
+        let config = config.build().unwrap();
 
+        conn.set_config(config).unwrap();
 
-impl ClientHelloCallback for MyClientHelloHandler {
-    fn poll_client_hello(&self, conn: &mut Connection) -> core::task::Poll<Result<(),s2n_tls::error::Error>> {
-        let invoked = self.invoked.fetch_or(true, Ordering::SeqCst);
-        if !invoked {
-            let mut config = s2n_tls::config::Builder::new();
-
-            config.enable_quic().unwrap(); 
-            config.set_security_policy(&s2n_tls::security::DEFAULT_TLS13).unwrap(); 
-            config.set_application_protocol_preference([b"h3"]).unwrap(); 
-
-            config.load_pem(CERT_PEM.as_bytes(), KEY_PEM.as_bytes()).unwrap();
-            let config = config.build().unwrap();
-
-            conn.set_config(config).unwrap();
-            println!("Set config done");
-            return Poll::Pending;
-        }
+        println!("Set config done");
         conn.server_name_extension_used(); // If I use sni to config the connection, I need to call this.
         Poll::Ready(Ok(()))
     }
@@ -62,13 +43,13 @@ impl ClientHelloCallback for MyClientHelloHandler {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    // let tls = s2n_quic::provider::tls::s2n_tls::Server::builder()
-    //     //.with_certificate(CERT_PEM, KEY_PEM)?
-    //     //.with_io("127.0.0.1:4433")?
-    //     .with_client_hello_handler(MyClientHelloHandler{invoked:Arc::new(AtomicBool::default())})?
-    //     .build()?;
+    let tls = s2n_quic::provider::tls::s2n_tls::Server::builder()
+        //.with_certificate(CERT_PEM, KEY_PEM)?
+        //.with_io("127.0.0.1:4433")?
+        .with_client_hello_handler(MyClientHelloHandler{})?
+        .build()?;
 
-    let tls = s2n_quic::provider::tls::s2n_tls::Server::from_loader(MyLoader{});
+    // let tls = s2n_quic::provider::tls::s2n_tls::Server::from_loader(MyLoader{});
 
     let mut server = Server::builder()
         // .with_tls((CERT_PEM, KEY_PEM))?    
