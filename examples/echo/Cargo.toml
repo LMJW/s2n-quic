@@ -8,6 +8,7 @@ edition = "2021"
 s2n-quic = { version = "1", path = "../../quic/s2n-quic", features = ["provider-tls-s2n", "unstable_client_hello"]}
 tokio = { version = "1", features = ["full"] }
 s2n-tls = { version = "*", features = ["quic"], path="../../../s2n-tls/bindings/rust/s2n-tls" }
+futures = "0.3.25"
 
 [workspace]
 members = ["."]
